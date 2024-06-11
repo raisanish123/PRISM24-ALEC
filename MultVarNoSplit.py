@@ -20,6 +20,7 @@ from sklearn.metrics import mean_squared_error
 from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import StratifiedKFold
 from sklearn.model_selection import TimeSeriesSplit
+from sklearn.model_selection import train_test_split
 from keras.models import Sequential
 from keras.layers import Dense
 from keras.layers import LSTM
@@ -30,7 +31,10 @@ from keras.metrics import MeanSquaredError
 #Self explanatory stuff
 #OG
 dataset = read_csv('combined_H1_edited.csv', header=0, index_col=0)
-dataset = dataset.dropna(how='any', axis=0)
+#dataset = dataset.dropna(how='any', axis=0)
+# Fill missing values
+dataset.fillna(method='ffill', inplace=True)
+dataset.fillna(method='bfill', inplace=True)
 #dataset = dataset[dataset['number'] > 0]
 #dataset = dataset.sample(frac = 1)
 #sample = 7
@@ -39,8 +43,11 @@ X = dataset.drop(['occupied','number'], axis=1)
 y = dataset['number']
 '''
 #Robod
-dataset = read_csv('combined_Room1.csv', header=0, index_col=0)
-dataset = dataset.dropna(how='any', axis=0)
+dataset = read_csv('combined_Room1.csv')
+#dataset = dataset.dropna(how='any', axis=0)
+# Fill missing values
+dataset.fillna(method='ffill', inplace=True)
+dataset.fillna(method='bfill', inplace=True)
 dataset = dataset[dataset['occupant_count [number]'] > 0]
 X = dataset.drop(['occupant_presence [binary]','occupant_count [number]'], axis=1)
 y = dataset['occupant_count [number]']
@@ -55,6 +62,9 @@ scaler = MinMaxScaler(feature_range=(0, 1))
 #scaler = StandardScaler()
 #takes said values, and converts them all to a range of feature_range
 scaled = scaler.fit_transform(X.values)
+
+#data_scaled = np.hstack((features_scaled, np.array(y).reshape(-1, 1)))
+
 
 def create_dataset(data,labels,seq_length,overlap,future_step):
   X,y = [],[]
@@ -76,9 +86,9 @@ def create_dataset(data,labels,seq_length,overlap,future_step):
   return X,y
 
 #OG data gampling
-seq_length = 100
-overlap = 5
-future_step = 1
+seq_length = 20
+overlap = 1
+future_step = 0
 '''
 #Robod sampling
 seq_length = 20
@@ -88,31 +98,17 @@ future_step = 0
 X,y = create_dataset(scaled, y,seq_length,overlap,future_step)
 #Returns a numpy.ndarray of stuff.
 
-# Shuffle the dataset
-assert len(X) == len(y)
-combined = np.hstack((X.reshape(X.shape[0], -1), y.reshape(-1, 1)))
-np.random.shuffle(combined)
-X_shuffled = combined[:, :-1].reshape(X.shape)
-y_shuffled = combined[:, -1]
-X, y = X_shuffled, y_shuffled
-
-values = X
-
-
-
 # frame as supervised learning
 #returns the dimensions of an ndarray, 1 dimension returns the size of the array.
 #0 indicates row size, 1 indicates sequence size, and 2 indicates features
-n_features = values.shape[1]
+n_features = X.shape[1]
 
 #values = reframed.values
-xr, xc, xw= values.shape
+xr, xc, xw= X.shape
 yc = y.shape
 
 print(np.unique(y))
 print("(" + str(xr) + "," + str(xc) + "," + str(xw) + "),(" + str(yc) + ")")
-n_train_hours = int(len(values) * 0.7)  # using 70% of data for training
-print(n_train_hours)
 
 
 # number of objects to use for predictions, the "1" indicates timesteps for some other forecasting type.
@@ -128,27 +124,28 @@ os.mkdir(path)
 os.chdir(path)
 
 #Training values, will set the inputs and outputs to the values that are being trained into the machine
-train_X, train_y = values[:n_train_hours], y[:n_train_hours]
+train_X, test_X, train_y, test_y = train_test_split(X,y,test_size=0.2, shuffle = True, random_state = 42)
 
-#Testing values, will be used to compare for accuracy.
-test_X, test_y = values[n_train_hours:], y[n_train_hours:]
-print("Training_index: " + str(train_X.shape) + "\nTesting_index: " + str(test_X.shape))
-print(np.unique(test_y))
+# Define the LSTM model
+input_size = X.shape[2]
+hidden_size = 50
+num_layers = 2
+output_size = 5  # Number of classes
 
-print(train_X.shape, train_y.shape, test_X.shape, test_y.shape)
-
-# design networks
-#Creates the sequential model
 model = Sequential()
-#Determines this to be an LSTM model, which utilizes the training values 1 is timestep and 2 is the features
-model.add(LSTM(50, input_shape=(train_X.shape[1], train_X.shape[2])))#, dropout = 0.4, recurrent_dropout = 0.4))
+model.add(LSTM(hidden_size, return_sequences=True, input_shape=(seq_length, input_size)))
+for _ in range(num_layers - 1):
+    model.add(LSTM(hidden_size, return_sequences=False))
+model.add(Dense(output_size, activation='softmax'))
 
-model.add(Dense(1))
-model.compile(loss='mae', optimizer='adam',metrics=['accuracy', MeanSquaredError()])
+# Compile the model
+model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
 
-# fit network
-#This is where the predictions are made, for each ep
-history = model.fit(train_X, train_y, epochs=100, batch_size=72, validation_data=(test_X, test_y), verbose=2, shuffle=False)
+# Train the model
+num_epochs = 30
+batch_size = 64
+
+history = model.fit(train_X, train_y, epochs=num_epochs, batch_size=batch_size, validation_data=(test_X, test_y), shuffle=True)
 filename = 'loss' + '.png'
 # plot history
 pyplot.figure()
@@ -168,8 +165,9 @@ pyplot.savefig(filename)
 # make a prediction
 print("Predicting here:")
 yhat = model.predict(test_X)
+yhat_classes = np.argmax(yhat, axis=1)
 print(yhat.shape)
-inv_yhat = yhat
+inv_yhat = yhat_classes
 
 # invert scaling for actual
 inv_y = test_y
@@ -180,7 +178,7 @@ pyplot.plot(test_y, label='Actual')
 pyplot.legend()
 pyplot.savefig(filename)
 
-cm = confusion_matrix(test_y.astype('int'),yhat.astype('int'))
+cm = confusion_matrix(test_y,yhat_classes)
 np.set_printoptions(threshold = np.inf)
 confusion = pd.DataFrame(cm)
 filename = 'confusion_matrix' + '.png'

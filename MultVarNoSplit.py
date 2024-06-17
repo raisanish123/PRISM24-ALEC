@@ -29,13 +29,13 @@ from operator import truediv
 import time
 from sklearn.decomposition import PCA
 
-parameter = "Hidden_Size "
+parameter = "Layers "
 
 directory = parameter + str(datetime.datetime.now())
 
 base = os.path.join(str(os.getcwd()),directory)
 
-changes = [25,50,75,100,125,150]
+changes = [1,2,3,4]
 
 for change in changes:
 
@@ -148,8 +148,8 @@ for change in changes:
 
   # Define the LSTM model
   input_size = X.shape[2]
-  hidden_size = change #Parameter
-  num_layers = 2 #Parameter
+  hidden_size = 125 #Parameter
+  num_layers = change #Parameter
   output_size = 5  # Number of classes
   dropout_rate = 0.0 #PARAMETER
 
@@ -264,6 +264,8 @@ for change in changes:
   f.write("Runtime = " + elapsed_time_str + "\n")
   f.write("Precision = " + str(prec) + "\n") 
   f.write("Recall = " + str(rec) + "\n") 
+  f.write("Accuracy = " + str(avg_train_acc) + "\n") 
+  f.write("Val_Accuracy = " + str(avg_val_acc) + "\n") 
   f.close()
 
   pathback = os.path.join(pathrun,"..")

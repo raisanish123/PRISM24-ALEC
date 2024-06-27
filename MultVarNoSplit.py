@@ -29,13 +29,15 @@ from operator import truediv
 import time
 from sklearn.decomposition import PCA
 
-parameter = "Layers "
+parameter = "Houses "
 
 directory = parameter + str(datetime.datetime.now())
 
 base = os.path.join(str(os.getcwd()),directory)
 
-changes = [1,2,3,4]
+changes = ['H1','H2','H3','H4','H5','H6']
+
+#Timestep stuff soon
 
 for change in changes:
 
@@ -44,7 +46,10 @@ for change in changes:
   # load dataset
   #Self explanatory stuff
   #OG
-  dataset = read_csv('combined_H1_edited.csv', header=0, index_col=0)
+  file = 'combined_' + change + '_edited.csv'
+  print(file)
+  dataset = read_csv(file, header=0, index_col=0)
+  print(dataset.values.shape)
   #dataset = dataset.dropna(how='any', axis=0)
   # Fill missing values
   dataset.fillna(method='ffill', inplace=True)
@@ -65,7 +70,7 @@ for change in changes:
   #print("Pca explains", np.sum(pca.explained_variance_ratio_))
 
   X = X.values
-
+  print(X.shape)
 
   '''
   #Robod
@@ -112,7 +117,7 @@ for change in changes:
     return X,y
 
   #OG data gampling
-  seq_length = 20 #Parameter
+  seq_length = 40 #Parameter
   overlap = 1 #Parameter
   future_step = 0 #Parameter
   '''
@@ -149,14 +154,23 @@ for change in changes:
   # Define the LSTM model
   input_size = X.shape[2]
   hidden_size = 125 #Parameter
-  num_layers = change #Parameter
-  output_size = 5  # Number of classes
+  num_layers = 4 #Parameter
+  output_size = np.unique(y).shape[0]  # Number of classes
   dropout_rate = 0.0 #PARAMETER
-
+  
   model = Sequential()
+  '''
   model.add(LSTM(hidden_size, return_sequences=True, input_shape=(seq_length, input_size), dropout=dropout_rate, recurrent_dropout=dropout_rate)) #First layer of LSTM
   for _ in range(num_layers - 1): #More layers of LSTM if num_layers > 1
       model.add(LSTM(hidden_size, return_sequences=False, dropout=dropout_rate, recurrent_dropout=dropout_rate))
+  '''
+  for layer_idx in range(1, num_layers):
+    if layer_idx == num_layers - 1:
+      # Last layer: return_sequences=False to output only the last output of the sequence
+      model.add(LSTM(hidden_size, return_sequences=False, dropout=dropout_rate, recurrent_dropout=dropout_rate))
+    else:
+      # Intermediate layers: return_sequences=True to pass sequences to the next layer
+      model.add(LSTM(hidden_size, return_sequences=True, dropout=dropout_rate, recurrent_dropout=dropout_rate))
   model.add(Dense(output_size, activation='softmax'))
 
   # Compile the model
